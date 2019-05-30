@@ -57,6 +57,8 @@ void* malloc(size_t size) {
         if (!blk) {
             struct meta* tail = get_block_addr(sbrk(0));
             blk = get_space(tail, size);
+        } else {
+            blk->free = 0;  // found a free block
         }
     }
     if (!blk) {

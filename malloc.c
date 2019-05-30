@@ -5,28 +5,27 @@
 
 struct meta {
     size_t size;
-    struct meta* next;
     int free;
+    struct meta* next;
 };
 
 struct meta* head = NULL;
 
-struct meta* find_free_block(size_t size) {
+// find_free_block also updates tail to point to the last block in the free
+// list, which is required when calling get_space.
+struct meta* find_free_block(struct meta** tail, size_t size) {
     struct meta* blk = head;
-    while (blk) {
-        if (blk->size >= size) {
-            return blk;
-        } else {
-            blk = blk->next;
-        }
+    while (blk && !(blk->free && blk->size >= size)) {
+        *tail = blk;
+        blk = blk->next;
     }
     return blk;
 }
 
 struct meta* get_space(struct meta* tail, size_t size) {
     struct meta* blk = sbrk(0);
-    struct meta* req = sbrk(sizeof(struct meta) + size);
-    assert(blk == req);
+    void* req = sbrk(size + sizeof(struct meta));
+    assert((void*)blk == req);
     if (req == (void*)-1) {
         return NULL;
     }
@@ -48,24 +47,22 @@ void* malloc(size_t size) {
         return NULL;
     }
     struct meta* blk;
-    if (!head) {
-        // first call
+    if (!head) {  // first call
         blk = get_space(NULL, size);
+        if (!blk) {
+            return NULL;
+        }
         head = blk;
     } else {
-        blk = find_free_block(size);
+        struct meta* tail = head;
+        blk = find_free_block(&tail, size);
         if (!blk) {
-            struct meta* tail = get_block_addr(sbrk(0));
             blk = get_space(tail, size);
         } else {
             blk->free = 0;  // found a free block
         }
     }
-    if (!blk) {
-        return NULL;
-    } else {
-        return blk + 1;
-    }
+    return blk + 1;
 }
 
 void free(void* ptr) {
@@ -85,13 +82,18 @@ void* calloc(size_t nmemb, size_t elem_size) {
 }
 
 void* realloc(void* ptr, size_t size) {
+    if (!ptr) {
+        return malloc(size);
+    }
     struct meta* blk = get_block_addr(ptr);
     if (blk->size >= size) {
         return ptr;
-    } else {
-        void* new_ptr = malloc(size);
-        memcpy(new_ptr, ptr, blk->size);
-        free(ptr);
-        return new_ptr;
     }
+    void* new_ptr = malloc(size);
+    if (!new_ptr) {
+        return NULL;
+    }
+    memcpy(new_ptr, ptr, blk->size);
+    free(ptr);
+    return new_ptr;
 }

@@ -1,3 +1,6 @@
+// This program implements a memory allocator using a first-fit algorithm
+// without consideration for alignment and thread safety.
+
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,19 +18,46 @@ struct meta {
 struct meta* head = NULL;
 
 // find_free_block also updates tail to point to the last block in the free
-// list, which is required when calling get_space.
+// list, which is required when calling get_space. The first block of
+// appropriate size is returned (after splitting, if necessary).
 struct meta* find_free_block(struct meta** tail, size_t size) {
     struct meta* blk = head;
     while (blk && !(blk->free && blk->size >= size)) {
         *tail = blk;
         blk = blk->next;
     }
+    // Split current block if there is enough space.
+    if (blk && blk->size > size + META_SIZE) {
+        struct meta* nblk = (void*)(blk + 1) + size;
+        nblk->size = blk->size - size - META_SIZE;
+        nblk->free = 1;
+        if (blk->next) {
+            blk->next->prev = nblk;
+        } else {
+            *tail = nblk;
+        }
+        nblk->next = blk->next;
+        nblk->prev = blk;
+        blk->size = size;
+        blk->next = nblk;
+
+        // If next block is free, merge it with nblk.
+        if (nblk->next && nblk->next->free) {
+            nblk->size += META_SIZE + nblk->next->size;
+            nblk->next = nblk->next->next;
+            if (nblk->next) {
+                nblk->next->prev = nblk;
+            } else {
+                *tail = nblk;
+            }
+        }
+    }
     return blk;
 }
 
 struct meta* get_space(struct meta* tail, size_t size) {
     struct meta* blk = sbrk(0);
-    void* req = sbrk(size + META_SIZE);
+    void* req = sbrk(META_SIZE + size);
     assert((void*)blk == req);
     if (req == (void*)-1) {
         return NULL;
@@ -79,13 +109,19 @@ void free(void* ptr) {
     // Check for adjacent free blocks.
     while (blk->next && blk->next->free) {
         // Merge next block into current.
-        blk->size += blk->next->size + META_SIZE;
+        blk->size += META_SIZE + blk->next->size;
         blk->next = blk->next->next;
+        if (blk->next) {
+            blk->next->prev = blk;
+        }
     }
     while (blk->prev && blk->prev->free) {
         // Merge current block into previous.
-        blk->prev->size += blk->size + META_SIZE;
+        blk->prev->size += META_SIZE + blk->size;
         blk->prev->next = blk->next;
+        if (blk->next) {
+            blk->next->prev = blk->prev;
+        }
         blk = blk->prev;
     }
 }

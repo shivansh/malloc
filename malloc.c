@@ -7,7 +7,10 @@ struct meta {
     size_t size;
     int free;
     struct meta* next;
+    struct meta* prev;
 };
+
+#define META_SIZE sizeof(struct meta)
 
 struct meta* head = NULL;
 
@@ -24,7 +27,7 @@ struct meta* find_free_block(struct meta** tail, size_t size) {
 
 struct meta* get_space(struct meta* tail, size_t size) {
     struct meta* blk = sbrk(0);
-    void* req = sbrk(size + sizeof(struct meta));
+    void* req = sbrk(size + META_SIZE);
     assert((void*)blk == req);
     if (req == (void*)-1) {
         return NULL;
@@ -32,6 +35,7 @@ struct meta* get_space(struct meta* tail, size_t size) {
     if (tail) {
         tail->next = blk;
     }
+    blk->prev = tail;
     blk->size = size;
     blk->next = NULL;
     blk->free = 0;
@@ -72,6 +76,18 @@ void free(void* ptr) {
     struct meta* blk = get_block_addr(ptr);
     assert(blk->free == 0);
     blk->free = 1;
+    // Check for adjacent free blocks.
+    while (blk->next && blk->next->free) {
+        // Merge next block into current.
+        blk->size += blk->next->size + META_SIZE;
+        blk->next = blk->next->next;
+    }
+    while (blk->prev && blk->prev->free) {
+        // Merge current block into previous.
+        blk->prev->size += blk->size + META_SIZE;
+        blk->prev->next = blk->next;
+        blk = blk->prev;
+    }
 }
 
 void* calloc(size_t nmemb, size_t elem_size) {

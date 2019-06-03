@@ -20,7 +20,7 @@ struct meta* head = NULL;
 
 // split_block resizes blk to size and inserts a new block of remaining size
 // next to it in the free block list.
-struct meta* split_block(struct meta* blk, size_t size) {
+void split_block(struct meta* blk, size_t size) {
     struct meta* nblk = (void*)(blk + 1) + size;
     nblk->size = blk->size - size - META_SIZE;
     blk->size = size;
@@ -40,7 +40,6 @@ struct meta* split_block(struct meta* blk, size_t size) {
             nblk->next->prev = nblk;
         }
     }
-    return nblk;
 }
 
 // find_free_block also updates tail to point to the last block in the free
@@ -51,13 +50,6 @@ struct meta* find_free_block(struct meta** tail, size_t size) {
     while (blk && !(blk->free && blk->size >= size)) {
         *tail = blk;
         blk = blk->next;
-    }
-    // Split current block if there is enough space.
-    if (blk && blk->size - size > META_SIZE) {
-        struct meta* nblk = split_block(blk, size);
-        if (!nblk->next) {
-            *tail = nblk;
-        }
     }
     return blk;
 }
@@ -88,6 +80,7 @@ void* malloc(size_t size) {
         return NULL;
     }
     // Round up size to next multiple of ALIGN.
+    // TODO: handle alignment when merging free blocks.
     size = (size + ALIGN - 1) / ALIGN;
     size *= ALIGN;
 
@@ -103,8 +96,12 @@ void* malloc(size_t size) {
         blk = find_free_block(&tail, size);
         if (!blk) {
             blk = get_space(tail, size);
-        } else {
-            blk->free = 0;  // found a free block
+        } else {  // found a free block
+            blk->free = 0;
+            // Split if there is enough space.
+            if (blk->size - size > META_SIZE) {
+                split_block(blk, size);
+            }
         }
     }
     return blk + 1;

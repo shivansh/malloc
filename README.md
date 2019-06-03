@@ -1,4 +1,6 @@
 # malloc
+A mini memory allocator using a first-fit algorithm, without consideration for
+thread safety.
 
 ## Usage
 ```

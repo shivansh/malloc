@@ -1,5 +1,5 @@
 // This program implements a memory allocator using a first-fit algorithm,
-// without consideration for alignment and thread safety.
+// without consideration for thread safety.
 
 #include <assert.h>
 #include <stdio.h>
@@ -13,6 +13,7 @@ struct meta {
     struct meta* prev;
 };
 
+#define ALIGN 8  // 8 byte alignment
 #define META_SIZE sizeof(struct meta)
 
 struct meta* head = NULL;
@@ -86,6 +87,10 @@ void* malloc(size_t size) {
     if (size <= 0) {
         return NULL;
     }
+    // Round up size to next multiple of ALIGN.
+    size = (size + ALIGN - 1) / ALIGN;
+    size *= ALIGN;
+
     struct meta* blk;
     if (!head) {  // first call
         blk = get_space(NULL, size);
